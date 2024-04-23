@@ -4,7 +4,13 @@ use serenity::all::GuildInfo;
 use serenity::all::GuildPagination;
 use serenity::http;
 use serenity::prelude::*;
+use tracing::error;
+use tracing::trace;
+use tracing::warn;
+use tracing::debug;
 use std::env;
+use tracing::Level;
+use tracing_subscriber;
 
 async fn test_get_guilds(http_client: &http::Http) -> Result<Vec<GuildInfo>, serenity::Error> {
     let mut guilds = Vec::<GuildInfo>::new();
@@ -20,10 +26,10 @@ async fn test_get_guilds(http_client: &http::Http) -> Result<Vec<GuildInfo>, ser
                 let partial_len = guilds_partial.len();
                 guilds.extend(guilds_partial);
                 if partial_len >= limit as usize {
-                    // println!("Got {} guilds, continue", limit);
+                    trace!("Got {} guilds, continue", limit);
                     last_id = Some(guilds.last().unwrap().id);
                 } else {
-                    // println!("Got all guilds, break");
+                    trace!("Got all guilds, break");
                     break;
                 }
             }
@@ -45,11 +51,15 @@ async fn test_get_guilds(http_client: &http::Http) -> Result<Vec<GuildInfo>, ser
 async fn main() {
     macro_rules! sleep_then_continue {
         () => {
-            println!("Sleeping for 15 seconds before continuing");
+            debug!("Sleeping for 15 seconds before continuing");
             tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
             continue;
         };
     }
+
+    tracing_subscriber::fmt()
+    .with_max_level(Level::DEBUG)
+    .init();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let intents = GatewayIntents::default();
@@ -63,7 +73,7 @@ async fn main() {
         // Start two shards. Note that there is an ~5 second ratelimit period between when one shard
         // can start after another.
         if let Err(why) = client.start_shards(1).await {
-            println!("Client error: {why:?}");
+            error!("Client error: {why:?}");
         }
     });
 
@@ -71,24 +81,24 @@ async fn main() {
         let guilds = match test_get_guilds(&*http_client).await {
             Ok(guilds) => guilds,
             Err(why) => {
-                println!("Error getting guilds: {why:?}");
+                warn!("Error getting guilds: {why:?}");
                 sleep_then_continue!();
             }
         };
 
-        println!("Update nicknames in guilds:");
+        debug!("Update nicknames in guilds:");
         for g in &guilds {
             let current_date = &chrono::Utc::now().to_rfc3339()[5..19];
             match http_client
                 .edit_nickname(g.id, Some(current_date), None)
                 .await
             {
-                Ok(_) => println!(
+                Ok(_) => debug!(
                     "  Updated nickname for guild {} to {}",
                     g.name, current_date
                 ),
                 Err(why) => {
-                    println!("  Error updating nickname for guild {}: {why:?}", g.name);
+                    warn!("  Error updating nickname for guild {}: {why:?}", g.name);
                     sleep_then_continue!();
                 }
             };
@@ -99,7 +109,7 @@ async fn main() {
             let current_date = &chrono::Utc::now().to_rfc3339()[5..19];
             let new_activity = ActivityData::custom(current_date);
             runner.runner_tx.set_activity(Some(new_activity));
-            println!(
+            debug!(
                 "Updated activity for shard {} to {}",
                 shard_id, current_date
             );
