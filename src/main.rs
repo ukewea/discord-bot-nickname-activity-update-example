@@ -88,6 +88,18 @@ async fn main() {
 
         debug!("Update nicknames in guilds:");
         for g in &guilds {
+            let roles = match http_client.get_guild_roles(g.id).await {
+                Ok(roles) => roles,
+                Err(why) => {
+                    warn!("  Error getting roles for guild {}: {why:?}", g.name);
+                    sleep_then_continue!();
+                }
+            };
+
+            for role in roles {
+                debug!("  Role: {}, id = {}", role.name, role.id);
+            }
+
             let current_date = &chrono::Utc::now().to_rfc3339()[5..19];
             match http_client
                 .edit_nickname(g.id, Some(current_date), None)
